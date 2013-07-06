@@ -1,0 +1,71 @@
+<html>
+<head>
+<script type="text/javascript" src="static/scripts/jquery.js"></script>
+<script type="text/javascript">
+	$(function() {
+		$("#submit_form_button").click(function() {
+			// get the file from the form 
+			// check if its already uploaded 
+			//   if yes, get amount uploaded and send the rest 
+			//   if no, send the entire file; as server takes care of making into chunks 
+			// submit the form 
+			
+			// Approach 1: simple form submit (PASS) 
+			// $("#upload_image_form").submit();   
+
+			// Approach 2, AJAX form submit (PASS) 
+			var data = new FormData();
+			$.each($("#image_upload").prop('files'), function(i, file) {
+				data.append('myFile', file);
+			});
+			$.ajax(
+				{
+					cache: false,
+					contentType: false,
+					processData: false,
+					url: 'upload',
+					// headers: {'Content-Type': "multipart/form-data"},
+					headers: {'Cache-Control': "no-cache"},
+					data: data,
+					type: 'post',
+					success: function(data) {
+						$("#server_resp").fadeOut(500).html(data).fadeIn(300);
+					},
+					error: function(data) {
+						alert('Something went wrong: ' + data)
+					}
+				}
+			);
+			
+			// Approach 3, XHR form submit (FAIL)
+			/* var file = $("#image_upload")[0].files[0];
+			var xhr = new XMLHttpRequest();
+			xhr.open("POST", "upload", true);
+			xhr.setRequestHeader('Content-Type', "multipart/form-data");
+			xhr.setRequestHeader("Cache-Control", "no-cache");
+			xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
+			xhr.setRequestHeader("X-File-Name", file.name);
+			xhr.setRequestHeader("X-File-Size", file.size);
+			xhr.onreadystatechange = function() {
+				if (xhr.readyState == 4 && xhr.status == 200) {
+					$("#server_resp").text(xhr.responseText);
+					$("#upload_image_form")[0].reset();
+				}
+			};
+			xhr.send({'myFile': file}); */
+		});
+	});
+</script>
+</head>
+<body>
+	<form method='post' action="upload" enctype="multipart/form-data"
+		id="upload_image_form">
+		<input type="hidden" id="file_chunk" /> 
+		<input type="file"
+			id="image_upload" name="myFile" /> <br /> 
+		<input type="button"
+			id="submit_form_button" value="upload" />
+	</form>
+	<div id="server_resp"></div>
+</body>
+</html>

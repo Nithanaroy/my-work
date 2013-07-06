@@ -1,0 +1,217 @@
+<html>
+<head>
+<link href="/static/css/styles.css" rel="stylesheet" />
+<script type="text/javascript" src="/static/scripts/jquery.js"></script>
+<script type="text/javascript">
+	var dropbox, images_dir = '/static/images/';
+	window.onload = function() {
+		dropbox = document.getElementById("dropbox");
+		dropbox.addEventListener("dragenter", dragenter, false);
+		dropbox.addEventListener("dragover", dragover, false);
+		dropbox.addEventListener("drop", drop, false);
+	}
+	function dragenter(e) {
+		e.stopPropagation();
+		e.preventDefault();
+	}
+	function dragover(e) {
+		e.stopPropagation();
+		e.preventDefault();
+	}
+
+	function drop(e) {
+		e.stopPropagation();
+		e.preventDefault();
+
+		var dt = e.dataTransfer;
+		var files = dt.files;
+
+		previewFiles(files);
+	}
+
+	function upload_file() {
+		var selected_files = document.getElementById('input').files;
+		checkIfFileUploadedBefore(selected_files);
+		previewFiles(selected_files);
+	}
+
+	function checkIfFileUploadedBefore(files) {
+		for (i = 0; i < files.length; i++) {
+			var filename = files[i].name;
+			var amt;
+			// Get percentage of file uplaoded 
+			$.ajax({
+				url : 'checkIfFileUploaded.php',
+				data : {
+					'filename' : filename
+				},
+				type : 'GET',
+				async : false,
+				success : function(data) {
+					amt = parseInt(data);
+				},
+				error : function(data) {
+					alert("Something went wrong\n" + data);
+				}
+			});
+			files[i].uploadedBytes = amt;
+		}
+	}
+
+	// Only for single file 
+	function generateUploadChunkButtons(file) {
+		// TODO 
+	}
+
+	function previewFiles(files) {
+		var preview = document.getElementById("output");
+		for ( var i = 0; i < files.length; i++) {
+			// atleast 20% of image should be in the blob. TODO Yet to verify 
+			// 			var file = files[i].slice(0, parseInt(files[i].size * 0.4), files[i].type);
+			// 			var file = files[i].slice(parseInt(files[i].size * 0.2) + 1, parseInt(files[i].size * 0.4), files[i].type);
+			// 			var file = files[i].slice(0, 100000, files[i].type);
+			var start = files[i].uploadedBytes - 1 > 0 ? files[i].uploadedBytes - 1
+					: 0;
+			var stop = files[i].size;
+			var file = files[i].slice(start, stop, files[i].type);
+			var imageType = /image.*/;
+
+			if (!file.type.match(imageType)) {
+				continue;
+			}
+
+			file.name = files[i].name;
+			file.uploadedBytes = files[i].uploadedBytes;
+
+			var img = document.createElement("img");
+			img.classList.add("obj");
+			img.file = file;
+			preview.appendChild(img);
+
+			var reader = new FileReader();
+			reader.addEventListener("loadend", function(e) {
+				img.src = reader.result;
+			});
+			reader.readAsDataURL(files[i]);
+		}
+	}
+	function sendFiles() {
+		var imgs = document.querySelectorAll(".obj");
+
+		for ( var i = 0; i < imgs.length; i++) {
+			new FileUpload(imgs[i], imgs[i].file);
+		}
+	}
+	function FileUpload(img, file) {
+		var xhr = new XMLHttpRequest();
+
+		xhr.upload.addEventListener("progress", function(e) {
+			if (e.lengthComputable) {
+				var percentage = Math.round((e.loaded * 100) / e.total);
+				$("#progress_bar").text(percentage);
+			}
+		}, false);
+
+		// 		xhr.upload.addEventListener("load", function(e) {
+		// 			self.ctrl.update(100);
+		// 			var canvas = self.ctrl.ctx.canvas;
+		// 			canvas.parentNode.removeChild(canvas);
+		// 		}, false); 
+
+		xhr.open("POST", "upload", true);
+		xhr.setRequestHeader("Cache-Control", "no-cache");
+		xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
+		xhr.setRequestHeader("X-File-Name", file.name);
+		xhr.setRequestHeader("X-File-Size", file.size);
+		xhr.setRequestHeader("X-File-IsNew", file.uploadedBytes > 0 ? 0 : 1);
+		xhr.onreadystatechange = function() {
+			if (xhr.readyState == 4 && xhr.status == 200) {
+				document.getElementById("response").innerHTML = xhr.responseText;
+				$("#uploaded_image").children("img").remove().end().append(
+						$("<img />").attr("src", images_dir + file.name));
+				$("form")[0].reset();
+			}
+		};
+		xhr.send(file);
+
+// 		headers = {'Cache-Control': 'no-cache', 
+// 				'X-Requested-With' : 'XMLHttpRequest',
+// 				'X-File-Name': file.name,
+// 				'X-File-Size': file.size,
+// 				'X-File-IsNew': file.uploadedBytes > 0 ? 0 : 1}
+
+// 		fileContent = null;
+// 		var reader = new FileReader();
+// 		reader.addEventListener("loadend", function() {
+// 			fileContent = reader.result; // contains the contents of blob as a typed array
+// 		});
+// 		reader.readAsArrayBuffer(file.slice());
+
+// 		$.ajax(
+// 				'upload',
+// 				{
+// 					type: 'POST',
+// 					async: true,
+// 					cache: false,
+// 					headers: headers,
+// 					data: {'data': fileContent},
+// 					xhr: function() { 
+// 							customXhr = $.ajaxSettings.xhr();
+// 							customXhr.upload.addEventListener("progress", function(e) {
+// 								if (e.lengthComputable) {
+// 									var percentage = Math.round((e.loaded * 100) / e.total);
+// 									$("#progress_bar").text(percentage);
+// 								}
+// 							}, false);
+// 						},
+// 					success: function(data) {
+// 							$("#response").html(data);
+// 							$("#uploaded_image").children("img").remove().end().append(
+// 									$("<img />").attr("src", images_dir + file.name));
+// 							$("form")[0].reset();
+// 						},
+// 					error: function(data) {
+// 							alert("Upload call: Something went wrong");
+// 						}
+// 				}
+// 			  )
+		
+	}
+</script>
+</head>
+<body>
+	<form>
+		<table border="1" width="100%">
+			<tr valign="top">
+				<td>
+					<fieldset class="bounding_box" id="uploaded_image">
+						<legend>Uploaded Image</legend>
+					</fieldset>
+					<fieldset class="bounding_box">
+						<legend>Upload Percent</legend>
+						<div id="progress_bar"></div>
+					</fieldset>
+				</td>
+				<td>
+					<fieldset class="bounding_box">
+						<legend>Preview</legend>
+						<div id="output"></div>
+					</fieldset>
+					<fieldset class="bounding_box">
+						<legend>Textual Server response</legend>
+						<div id="response"></div>
+					</fieldset>
+				</td>
+			</tr>
+		</table>
+
+		<input type="file" id="input" onchange="upload_file()" />
+		<div id="dropbox" class="restricted_bounding_box">
+			<p>Drop your files here</p>
+		</div>
+
+		<input type="button" id="upload_image_btn" value="Upload image"
+			onclick="sendFiles()" />
+	</form>
+</body>
+</html>

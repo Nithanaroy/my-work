@@ -1,0 +1,15 @@
+body {
+	font-family: serif;
+	margin: 10px;
+}
+
+.restricted_bounding_box {
+	width: 300px;
+	height: 100px;
+	border: solid 1px #000;
+	text-align: center
+}
+
+fieldset {
+	margin: 20px 0;
+}
