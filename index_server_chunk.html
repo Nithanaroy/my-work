@@ -41,24 +41,37 @@
 		// returns the file key of a file 
 		// MD5 hash of file contents. Optimized approach as file is loaded into memory in chunks 
 		function get_file_key(file) {
-			var chunksize = 1024 * 1024 * 20; // 20 MB chunks 
-			var cChunks = Math.ceil(file.size / chunksize);
+			var chunkSize = 1024 * 1024 * 20; // 20 MB chunks 
+			var chunks = Math.ceil(file.size / chunkSize);
 			var currentChunk = 0;
 			var spark = new SparkMD5.ArrayBuffer();
+			var hash = ""; // Default, enables fresh upload of file. 
 			frOnload = function(e) {
 	            console.log("Read chunk #", currentChunk + 1, "of", chunks);
 	            spark.append(e.target.result); 
 	            currentChunk++;
 
 	            if (currentChunk < chunks)
-	                loadNext();
+	            	loadNextSlice();
 	            else
-	            	return spark.end(); // Computed HASH 
+	            	hash = spark.end(); // Computed HASH 
 	        };
 	        frOnerror = function () {
 	            console.warn("File Reader: Something went wrong.");
+	            throw "Couldn't fetch the key. Uploading file from begining"
 	        };
-			return file.name
+	        function loadNextSlice() {
+	            var fileReader = new FileReader();
+	            fileReader.onload = frOnload;
+	            fileReader.onerror = frOnerror;
+
+	            var start = currentChunk * chunkSize,
+	                end = ((start + chunkSize) >= file.size) ? file.size : start + chunkSize;
+
+	            fileReader.readAsArrayBuffer(file.slice(start, end));
+	        };
+	        loadNextSlice();
+	        return hash;
 		}
 
 		function upload_files(files) {
