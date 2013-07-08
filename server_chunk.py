@@ -7,16 +7,16 @@ class Root:
         return open(template)
     
     @cherrypy.expose
-    def upload(self, myFile):
+    def upload(self, fileObject):
         '''
         Uploads the passed file
         '''
         CHUNK = 1024 # * 1024
         read_length = 0
         file_path = 'static/images/'
-        fd = open(file_path + cherrypy.request.headers['Name'], 'a+')
+        fd = open(file_path + cherrypy.request.headers['NAME'], 'a+')
         while True:
-            data = myFile.file.read(CHUNK)
+            data = fileObject.file.read(CHUNK)
             if not data:
                 break
             fd.write(data)
@@ -27,8 +27,7 @@ class Root:
     @cherrypy.expose
     def check_upload(self):
         '''
-        checks if the given file has already uploaded
-        TODO: Better way to check if the file has uploaded. For now using filename 
+        Checks if the given files are already uploaded
         '''
         cl = cherrypy.request.headers['Content-Length']
         rawbody = cherrypy.request.body.read(int(cl))
@@ -44,10 +43,10 @@ class Root:
     
     def get_file_name_from_key(self, key):
         '''
-            Gets the filename from key. Currently filename itself is the key
-            TODO: A better file key
+        Gets the filename from key. 
         '''
-        return key
+        key_fileName = {'0e37e5dda470714d2d1945f23c5f5304': 'Colorful Cake and Candles.jpg'}
+        return key_fileName[key]
     
 cherrypy.tree.mount(Root(), '/', 'app.conf')
 cherrypy.engine.start()

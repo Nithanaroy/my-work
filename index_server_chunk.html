@@ -4,48 +4,47 @@
 <script type="text/javascript" src='static/scripts/spark-md5.min.js'></script>
 <script type="text/javascript">
 	$(function() {
+		var MAX_SIMULTANEOUS_UPLOADS = 3; // These many images will be uploaded simultaneously 
+		var total_files = 0, iCurrentFileForUpload = 0, files = null;
 		$("#submit_form_button").click(function() {
-			var files = $("#image_upload").prop('files'); // Not a simple array, a FileList 
-			upload_files(files);
+			files = filter_non_image_files($("#image_upload").prop('files'));
+			total_files = files.length;
+			try {
+				while(iCurrentFileForUpload < MAX_SIMULTANEOUS_UPLOADS && iCurrentFileForUpload < total_files)
+					upload_next_file(); 
+			}
+			catch(e) {
+				// If some of the modern JS constructs are not supported stop the process 
+				alert('Something went wrong.\nIncompatible browser can be a possible reason.');
+			}
 		});
-
-		// Checks the number of bytes uploaded of the passed files 
-		// Adds a property to each file object called 'uploaded_bytes'
-		function get_upload_amounts(files) {
-			file_keys = []; // Key of the file using which a file will be checked 
-			$(files).each(function(index, file) {
-				file_keys.push(get_file_key(file))
+		
+		function filter_non_image_files(files) {
+			var imageType = /image.*/;
+			var image_files = [];
+			$(files).each(function(i, file) {
+				if(file.type.match(imageType))
+					image_files.push(file);
 			});
-
-			var file_uploaded = {}
-
-			// Check upload amount 
-			data = JSON.stringify(file_keys)
-			$.ajax({
-				url : 'check_upload',
-				type : 'POST',
-				contentType : "application/json",
-				processData : false,
-				data : data,
-				async : false,
-				success : function(data) {
-					file_uploaded = JSON.parse(data);
-				},
-				error : function(data) {
-					alert("Checking Upload: Something went wrong");
-				}
-			});
-			return file_uploaded;
+			if(files.length != image_files.length)
+				alert("Only image files are allowed. Uploading only them if any.")
+			return image_files;
+		}
+		
+		function upload_next_file() {
+			if(iCurrentFileForUpload < total_files)
+				calc_file_key_and_trigger_upload(files[iCurrentFileForUpload++]); // Async method
+			else
+				do_upload_complete();
 		}
 
-		// returns the file key of a file 
-		// MD5 hash of file contents. Optimized approach as file is loaded into memory in chunks 
-		function get_file_key(file) {
-			var chunkSize = 1024 * 1024 * 20; // 20 MB chunks 
+		// Adds 'key' property to file object
+		// MD5 hash of file contents. Optimized approach, as file is loaded into memory in chunks 
+		function calc_file_key_and_trigger_upload(file) {
+			var chunkSize = 1024 * 1024 * 20; // 20 MB chunks for generating MD5 hash key
 			var chunks = Math.ceil(file.size / chunkSize);
 			var currentChunk = 0;
 			var spark = new SparkMD5.ArrayBuffer();
-			var hash = ""; // Default, enables fresh upload of file. 
 			frOnload = function(e) {
 	            console.log("Read chunk #", currentChunk + 1, "of", chunks);
 	            spark.append(e.target.result); 
@@ -54,11 +53,15 @@
 	            if (currentChunk < chunks)
 	            	loadNextSlice();
 	            else
-	            	hash = spark.end(); // Computed HASH 
+	            {
+	            	var hash = spark.end(); // Completed computing MD5 HASH 
+	            	file.key = hash; // Save the hash as a property of the file
+	            	start_file_upload(file); // Triggers file upload 
+	            }
 	        };
-	        frOnerror = function () {
-	            console.warn("File Reader: Something went wrong.");
-	            throw "Couldn't fetch the key. Uploading file from begining"
+	        frOnerror = function (data) {
+	            console.warn("File Key Computation: Something went wrong.");
+	            alert("Reading File: Something went wrong.\nRefresh page and retry.");
 	        };
 	        function loadNextSlice() {
 	            var fileReader = new FileReader();
@@ -71,12 +74,65 @@
 	            fileReader.readAsArrayBuffer(file.slice(start, end));
 	        };
 	        loadNextSlice();
-	        return hash;
 		}
 
-		function upload_files(files) {
-			form_data = get_form_data(files)
-			headers = get_headers(files[0]); // TODO: Only one file is allowed because get_headers is written like that 
+		function start_file_upload(file) {
+			try {
+				file_uploaded = get_uploaded_amount(file.key);
+				form_data = get_form_data(file, file_uploaded);
+				upload_file(file, form_data)
+			}
+			catch(e) {
+				/* 
+					Gracefully stop the process for known errors
+					e.message will either be:
+						1) upload_amount => Ignore
+						2) upload => Ignore
+						3) others => Bubble the error
+				*/
+				switch(e.message) {
+					case 'upload_amount': break;
+					case 'upload': break;
+					default: throw e.message;
+				}
+			}
+		}
+
+		/* 
+			Checks the number of bytes uploaded of the passed files 
+		   	Adds a property to each file object called 'uploaded_bytes' 
+		*/
+		function get_uploaded_amount(file_key) {
+			var file_uploaded;
+			data = JSON.stringify([file_key]) // Server expects an array of file keys. Bulk API
+			$.ajax({
+				url : 'check_upload',
+				type : 'POST',
+				contentType : "application/json",
+				processData : false,
+				data : data,
+				async : false,
+				success : function(data) {
+					file_uploaded = JSON.parse(data);
+				},
+				error : function(data) {
+					alert("Checking File Uploaded Amount: Something went wrong\nRetry upload");
+					console.warn('Checking File Uploaded Amount: Error!');
+					throw 'upload_amount';
+				}
+			});
+			return file_uploaded;
+		}
+
+		function get_form_data (file, file_uploaded) {
+			var form_data = new FormData();
+			start = file_uploaded[file.key] > 0 ? file_uploaded[file.key] - 1 : 0; // Subtracted 1 as slice's indexing is zero based
+			form_data.append('fileObject', file.slice(start));
+			return form_data;
+		}
+
+		function upload_file(file, form_data) {
+			headers = get_headers(file);
 			$.ajax({
 				cache : false,
 				contentType : false,
@@ -87,36 +143,30 @@
 				type : 'post',
 				success : function(data) {
 					$("#server_resp").fadeOut(500).html(data).fadeIn(300);
+					upload_next_file();
 				},
 				error : function(data) {
-					alert('File Upload: Something went wrong')
+					alert('File Upload: Something went wrong.\nRetry');
+					console.warn('File Upload: Error!');
+					throw 'upload';
 				}
 			});
 		}
 		
-		function get_form_data(files) {
-			var data = new FormData();
-			var imageType = /image.*/; // Only images are allowed 
-			file_uploaded = get_upload_amounts(files); // Get the uplaoded amount of each file 
-			$(files).each(function(i, file) {
-				/* if (!file.type.match(imageType))
-					continue; */
-				start = file_uploaded[file.name] > 0 ? file_uploaded[file.name] - 1 : 0; // Subtracted 1 as slice's indexing is zero based
-				data.append('myFile', file.slice(start)); // TODO: as of now only 1 file can  be uplaoded at once because of this line 
-			});
-			return data;
-		}
-		
 		function get_headers(file) {
-			file_properties=['name', 'size', 'type', 'lastModifiedDate'];
+			file_properties=['name', 'size', 'type', 'lastModifiedDate', 'key'];
 			headers = {}
-			// Properties of file 
 			for(property in file)
 				if(file_properties.indexOf(property) >= 0)
-					headers[property] = file[property];
+					headers[property.toUpperCase()] = file[property];
 			// General properties 
 			headers['Cache-Control'] = "no-cache";
 			return headers;
+		}
+		
+		function do_upload_complete() {
+			alert('Upload complete');
+			$("#upload_image_form")[0].reset();
 		}
 	});
 </script>
@@ -124,8 +174,8 @@
 <body>
 	<form method='post' action="upload" enctype="multipart/form-data"
 		id="upload_image_form">
-		<input type="hidden" id="file_chunk" /> <input type="file"
-			id="image_upload" name="myFile" /> <br /> <input type="button"
+		<input type="hidden" id="file_chunk" /> 
+		<input type="file" id="image_upload" multiple /> <br /> <input type="button"
 			id="submit_form_button" value="upload" />
 	</form>
 	<div id="server_resp" style="display: none;"></div>
